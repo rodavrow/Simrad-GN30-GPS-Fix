@@ -1,0 +1,7 @@
+# Never commit firmware images
+*.bin
+*.hex
+*.srec
+sram_backup_*
+.venv/
+__pycache__/
