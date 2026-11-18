@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2026 rodavrow
+# Provided "as is", without warranty; use at your own risk. See LICENSE and DISCLAIMER.md.
 """
 gn30_patch.py - fix the GPS week-number rollover in a Simrad/Shipmate GN30 MKII
 (MC68341) flash dump.

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2026 rodavrow
+#
 # venv.ps1 - create (first run) and activate the Python venv for bp3_bdm.py
 #
 # Must be DOT-SOURCED so the activation sticks in your shell:

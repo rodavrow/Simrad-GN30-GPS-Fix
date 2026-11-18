@@ -1,19 +1,38 @@
 # Simrad / Shipmate GN30 MKII: GPS week-rollover fix
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R5O720EQBI)
+
 The Simrad (Shipmate) GN30 MKII GPS navigator has shown the wrong date since **April 2021**. After a cold start it reports a date 1024 weeks (about 19.6 years) in the past: in October 2026 it shows **March 2007**. The date can be set by hand, but the GPS overwrites it as soon as it decodes satellite data.
 
-This project fixes that by changing 3 bytes of the unit's firmware. It contains:
+This project fixes that by changing 3 bytes of the unit's firmware.
+
+> ## ⚠️ Warning: read before you do anything
+>
+> - **You do this entirely at your own risk.** The tools come "as is", with **no warranty**, and the author accepts **no liability** for any damage, loss or injury.
+> - **You can permanently break your unit.** The procedure means opening it, connecting to its circuit board and rewriting part of its firmware.
+> - **Never rely on a modified unit as your only means of navigation.** The modified firmware is not tested, approved or supported by the manufacturer or any authority. It was tested on **one** unit.
+> - Modifying the unit may void its warranty, its approvals and your insurance cover.
+> - **No firmware is included.** You read it from your own unit. Do not share firmware dumps. Making sure this is lawful where you live is your responsibility.
+> - This is an independent hobby project, **not affiliated with or endorsed by** Simrad, Shipmate or any other company.
+>
+> The full terms are in [DISCLAIMER.md](DISCLAIMER.md) and [LICENSE](LICENSE). **By using this project you accept them.**
+
+## What's in the repository
 
 | File | Purpose |
 |---|---|
+| `gn30_wizard.py` | **Start here.** Guided walk-through of the whole procedure. It runs the two tools below for you, with extra checks. |
 | `gn30_patch.py` | Analyses **your own** firmware dump and applies the date fix. No dependencies. |
 | `bp3_bdm.py` | Reads, flashes and verifies the GN30's flash over the CPU's debug port (BDM), using a **Bus Pirate v3**. |
 | `flashprog.s` | Source of the small flash-programming routine that `bp3_bdm.py` loads into the GN30's RAM. It is already built into `bp3_bdm.py`; it's included for review. |
 | `venv.sh` | Linux/macOS helper: creates and activates a Python venv with `pyserial`. |
 | `venv.ps1` | Windows (PowerShell) helper: creates and activates a Python venv with `pyserial`. |
 | `requirements.txt` | `pyserial` |
+| `test_gn30_wizard.py` | Unit tests for the wizard: `python -m unittest test_gn30_wizard`. |
+| `LICENSE` | GNU General Public License v3. |
+| `DISCLAIMER.md` | The full disclaimer. Read it first. |
 
-> **No firmware is included or distributed.** The firmware is Simrad's copyrighted code. You read it from your own unit, patch it locally and write it back. Please don't upload dumps (`*.bin`) to this repository or to issues. The `.gitignore` blocks them.
+> **No firmware is included or distributed.** The firmware is the copyrighted code of its owner. You read it from your own unit, patch it locally and write it back to the same unit. Do not upload dumps (`*.bin`) to this repository, to issues or anywhere else. The `.gitignore` blocks them.
 
 ---
 
@@ -79,6 +98,28 @@ The GN30 MKII main board has an unpopulated **8-pad header** wired to the MC6834
 - The Bus Pirate drives 3.3 V highs into a 5 V CPU. That is within spec (the 68341 needs only 2.0 V for a high), and its pins tolerate 5 V.
 - Plug the Bus Pirate into USB **before** powering up the GN30.
 
+## Quick start: the guided wizard
+
+Once the wiring is done, the wizard takes you through everything else:
+
+```bash
+python3 gn30_wizard.py          # Windows: py gn30_wizard.py
+```
+
+It needs only Python 3.8+; it creates the `.venv` and installs `pyserial` itself. It then:
+
+1. shows the disclaimer and asks you to type `I UNDERSTAND`;
+2. goes through the wiring checklist and finds the Bus Pirate's serial port;
+3. checks the debug link (`pins`, then `probe`);
+4. reads the flash twice and compares the reads (it never overwrites an existing dump);
+5. patches the image and works out which sector to flash;
+6. flashes that sector (you still type `ERASE`), then reads it back as a separate check;
+7. offers the optional full verify and tells you how to restart the unit.
+
+You can stop it with Ctrl+C at any point and run it again: finished dumps are offered for reuse.
+
+The rest of this README describes the same procedure done by hand.
+
 ## Setup
 
 Linux/macOS:
@@ -97,13 +138,15 @@ If PowerShell blocks the script, run `Set-ExecutionPolicy -Scope CurrentUser Rem
 
 On Linux, add yourself to the `dialout` group if `/dev/ttyUSB0` gives *permission denied*.
 
-**Windows: lower the USB latency timer.** The Bus Pirate's USB-serial chip has a latency timer that defaults to 16 ms on Windows, which can make dumps much slower. Set it to 1 ms: Device Manager → Ports (COM & LPT) → the Bus Pirate's COM port → Properties → Port Settings → Advanced → Latency Timer (msec). Do this before the dump steps below.
+**Windows: lower the USB latency timer.** The Bus Pirate's USB-serial chip (FTDI) has a latency timer that defaults to 16 ms on Windows, which can make dumps much slower. Set it to 1 ms: Device Manager → Ports (COM & LPT) → the Bus Pirate's COM port → Properties → Port Settings → Advanced → Latency Timer (msec). Do this before the dump steps below.
 
-> If you edit the scripts on Windows, save them with **LF** line endings (Notepad++: *Edit → EOL Conversion → Unix*). CRLF breaks `venv.sh`.
+> If you edit the scripts on Windows, save them with **LF** line endings (Notepad++: *Edit → EOL Conversion → Unix*). CRLF breaks `venv.sh`. The `.gitattributes` file keeps `venv.sh` as LF when you clone with git.
 
 ---
 
 ## Procedure
+
+The commands below are written for Linux/macOS. On Windows, with the venv active, use `python` instead of `python3` and your `COM` port instead of `/dev/ttyUSB0`.
 
 ### 1. Check the connection
 
@@ -112,7 +155,7 @@ python3 bp3_bdm.py --port /dev/ttyUSB0 pins     # line levels only, doesn't touc
 python3 bp3_bdm.py --port /dev/ttyUSB0 probe    # stops the CPU in debug mode, reads a few registers
 ```
 
-`probe` should report the reset vectors `SSP=0x00180000 PC=0x00000D78`. If it says *FREEZE is low – CPU did not enter background state*, check the wiring, especially pads 1, 2 and 7.
+`probe` should report the reset vectors `SSP=0x00180000 PC=0x00000D78`. If it says *FREEZE is low: CPU did not enter background mode*, check the wiring, especially pads 1, 2 and 7.
 
 ### 2. Read the flash twice and compare
 
@@ -122,7 +165,9 @@ python3 bp3_bdm.py --port /dev/ttyUSB0 dump gn30_b.bin
 sha256sum gn30_a.bin gn30_b.bin                    # must be identical
 ```
 
-Keep this dump safe. It is your only backup of the original firmware.
+On Windows, compare with `Get-FileHash gn30_a.bin, gn30_b.bin` instead of `sha256sum`.
+
+Keep this dump safe. It is your only backup of the original firmware. Keep it private: do not share or upload it.
 
 ### 3. Analyse and patch
 
@@ -155,11 +200,11 @@ Use the sector that `gn30_patch.py` printed. Before erasing anything, `flash`:
 - asks you to type `ERASE`.
 
 Then:
-- **Erase and programming run on the GN30's own CPU.** A small routine is loaded into its RAM. The debug link never sends flash command sequences itself, so a glitch on the wires can't write garbage to the flash.
+- **Erase and programming run on the GN30's own CPU.** A small routine is loaded into its RAM. The debug link never sends flash command sequences itself, so a glitch on the wires is not turned into a stray flash write.
 - The sector is verified after programming, and re-programmed up to 3 times if needed.
 - The part of the GN30's battery-backed RAM used as a work area is saved to `sram_backup_<date>.bin` first and restored afterwards.
 
-If it is interrupted, run the same command again with `--resume`. The bootloader sector is never touched, so the unit can always be recovered over the debug port.
+If it is interrupted, run the same command again with `--resume`. The tools never write to the bootloader sector, so the unit should stay recoverable over the debug port. That is the design intent, not a guarantee.
 
 ### 5. Optional full verify
 
@@ -183,10 +228,31 @@ Disconnect the Bus Pirate (or run `python3 bp3_bdm.py --port /dev/ttyUSB0 run`) 
 - **Commands:** `python3 bp3_bdm.py --help` and `python3 bp3_bdm.py <command> --help` list all commands and options (`chipid`, `restore-sram`, `--poweron`, `--batch`, …).
 - **Tested on:** one GN30 MKII, bootloader build `20824_1999-08-16_12:46:10`, flashed successfully with a Bus Pirate v3 (`VERIFY OK`).
 
+## Support
+
+If this saved your GN30 and you'd like to say thanks:
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/R5O720EQBI)
+
+## Licence
+
+Copyright (c) 2026 rodavrow.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License](LICENSE) as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but **WITHOUT ANY WARRANTY**; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+In practice: you may use, copy, modify and share these tools, but if you distribute them or anything built on them, you must do so under the same licence, with the source code and this copyright notice.
+
+The licence covers the tools and documentation in this repository only. It grants no rights in the GN30's firmware, which belongs to its copyright holder and is not part of this project.
+
 ## Legal / disclaimer
 
-This repository contains only original tools and a description of a 3-byte change. It contains no Simrad firmware. You patch firmware you have read from a unit you own. Laws on modifying and repairing your own devices vary by country; check yours.
+**The full disclaimer is in [DISCLAIMER.md](DISCLAIMER.md). By using this project you accept it.** In short:
 
-Opening the unit and flashing its firmware is at your own risk. The tools include many safety checks, but there is no warranty. **Do not use a patched unit as your only means of navigation until you have confirmed it gives correct dates and positions.**
-
-Simrad and Shipmate are trademarks of their respective owners. This project is not affiliated with or endorsed by them.
+- **No warranty, no liability.** Everything here is provided "as is". Opening the unit and flashing its firmware is entirely at your own risk. The tools include many safety checks, but they can fail, and you can end up with a unit that no longer works.
+- **Navigation safety.** The modified firmware is not tested, certified or approved by the manufacturer or any authority, and was tested on one unit only. **Never rely on a modified unit as your only means of navigation.** Check its date, time and position against a trusted source.
+- **Approvals and insurance.** Modifying navigation equipment may void its warranty and type approval, and may affect your insurance or your vessel's compliance with carriage rules. Checking that is your responsibility.
+- **Firmware and copyright.** This repository contains only original tools and a description of a 3-byte change. It contains no manufacturer firmware. You patch firmware you have read from a unit you own, and you do not share it. Laws on analysing, modifying and repairing your own devices vary by country; making sure what you do is lawful is your responsibility.
+- **Trademarks.** Simrad, Shipmate and Bus Pirate are trademarks of their respective owners, used here only to identify the equipment. This project is not affiliated with, endorsed by or supported by them.
+- **No advice.** Nothing here is professional, legal or navigational advice.

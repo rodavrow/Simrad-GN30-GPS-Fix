@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2026 rodavrow
+# Provided "as is", without warranty; use at your own risk. See LICENSE and DISCLAIMER.md.
 """
 bp3_bdm.py - CPU32 BDM (MC68341) over a Bus Pirate v3 in binary bit-bang mode.
 
@@ -793,7 +796,8 @@ def cmd_flash(bdm, args):
                     log("    0x%06X: chip %04X  file %04X" % (i, int.from_bytes(boot[i:i + 2], "big"),
                                                             int.from_bytes(cur_file[i:i + 2], "big")))
                 raise BDMError("Bootloader sector differs from %s in %d word(s) - not flashing. "
-                               "Stop here and send me this output." % (args.current, len(bad)))
+                               "Stop here: read a fresh dump and compare it with %s."
+                               % (args.current, len(bad), args.current))
             log("  bootloader sector OK.")
         log("Reading current sector 0x%06X-0x%06X from the chip ..." % (base, base + size - 1))
         chip = bdm.read_range(base, size, "chip ")
@@ -823,6 +827,7 @@ def cmd_flash(bdm, args):
             else:
                 log("\nAbout to program the remaining %d word(s) of sector 0x%06X from %s (no erase)." % (
                     len(todo), base, args.file))
+            log("This is at your own risk and without warranty (see DISCLAIMER.md).")
             if input("Type ERASE to continue: ").strip() != "ERASE":
                 log("Aborted - nothing changed.")
                 return

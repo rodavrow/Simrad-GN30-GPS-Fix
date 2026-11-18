@@ -1,3 +1,7 @@
+| SPDX-License-Identifier: GPL-3.0-or-later
+| Copyright (c) 2026 rodavrow
+| Provided "as is", without warranty; use at your own risk. See LICENSE and DISCLAIMER.md.
+|
 | GN30 on-target flash routine for Fujitsu MBM29F800BA (word mode) on MC68341 CS0.
 | Runs from SRAM. Entered from BDM with GO; returns to BDM with BGND.
 | In:  a2 = 0xAAA, a3 = 0x554 (word-mode unlock addresses as CPU byte addresses)
