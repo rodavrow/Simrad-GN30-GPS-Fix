@@ -1,0 +1,4 @@
+# Normalise text files; shell scripts must stay LF or bash cannot source them
+* text=auto
+*.sh text eol=lf
+*.bin binary
